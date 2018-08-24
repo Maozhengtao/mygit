@@ -524,7 +524,7 @@ FROM
 	`order` AS od
 INNER JOIN orderproduct AS odp ON odp.OrderID = od.ID
 WHERE
-	od.`Status` = 5
+	od.`Status` in (1,2,4,5)
 AND od.Deleted = 0
 AND odp.Deleted = 0
 AND odp.DeliveryDate < DATE_ADD(CURDATE(), INTERVAL 1 MONTH)

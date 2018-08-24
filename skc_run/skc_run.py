@@ -15,33 +15,9 @@ from pandasql import sqldf
 from scipy import stats as sts
 from scipy.stats import chi2_contingency
 from scipy.stats import ttest_ind
-#import xlwt
 import sys
-#import smtplib
 import os.path
-#读取execel使用(支持07)  
-#from openpyxl import Workbook  
-#写入excel使用(支持07)  
-#from openpyxl import load_workbook 
-#from openpyxl.workbook import Workbook
-#from openpyxl.writer.excel import ExcelWriter 
-#from openpyxl.chart import BarChart, Series, Reference, BarChart3D   
-#from openpyxl.styles import Font, colors, Alignment,PatternFill,Border,Side,numbers
-#import xlsxwriter as xlw
-#from io import BytesIO 
-#from urllib.request import urlopen
-#import pickle as p 
-#from email.mime.multipart import MIMEMultipart
-#from email.mime.text import MIMEText
-#from email.mime.application import MIMEApplication
-#from email import encoders
-#from sqlalchemy import create_engine
-from skc_run_utils import select_result
-from skc_run_utils import get_orderid
-from skc_run_utils import orderimportsku
-from skc_run_utils import save_to_database
-#from sqlalchemy import create_engine
-#pymysql.install_as_MySQLdb()
+from skc_run_utils import *
 
 
 #Data
@@ -218,7 +194,7 @@ for skc in liquidity_id:
                 dates.append(date_1)
             dates.append(pd.to_datetime((boxdetail.datetime[(boxdetail.skc == skc)  &  (boxdetail.datetime <= skcchange_tep.iloc[j+1,2].date()+ datetime.timedelta(days=1))].max())))
     for m in range(0,len(dates),2):
-        skc_liquidity.loc[skc_liquidity.shape[0]+1] = {"cate_1":int(list(boxdetail.cate_1[boxdetail.skc == skc])[0]) ,"price":float(list(boxdetail.price[boxdetail.skc == skc])[0]) ,"skc" : skc,"date" : dates[m].date().strftime('%Y-%m-%d'),"skc_cnt" : len(boxdetail[(boxdetail.datetime >= dates[m]) & (boxdetail.datetime < dates[m+1]) & (boxdetail.skc == skc)]),"box_cnt" : len(list(set(boxdetail.BoxID[(boxdetail.datetime >= dates[m]) & (boxdetail.datetime < dates[m+1])]))) }
+        skc_liquidity.loc[skc_liquidity.shape[0]+1] = {"cate_1":int(list(boxdetail.cate_1[boxdetail.skc == skc])[0]) ,"price":float(list(boxdetail.price[boxdetail.skc == skc])[0]) ,"skc" : skc,"date" : dates[m].date().strftime('%Y-%m-%d'),"skc_cnt" : len(boxdetail[(boxdetail.datetime >= dates[m]) & (boxdetail.datetime <= dates[m+1]) & (boxdetail.skc == skc)]),"box_cnt" : len(list(set(boxdetail.BoxID[(boxdetail.datetime >= dates[m]) & (boxdetail.datetime <= dates[m+1])]))) }
 skc_liquidity = sqldf("select skc,cate_1,price,date,sum(skc_cnt) as cnt,sum(box_cnt) as box  from skc_liquidity  group by skc,date")
 skc_liquidity['liquidity'] = skc_liquidity.cnt /skc_liquidity.box
 skc_liquidity.dropna(axis=0, how='any', thresh=None, subset=None, inplace=True)
@@ -269,12 +245,49 @@ skc_s_liquidity['boxcnt'] = skc_s_liquidity['stock'] / skc_s_liquidity['liquidit
 skc_s_liquidity['day'] = skc_s_liquidity['boxcnt'] / box_cnt.iloc[0,0]
 #提取需补S级SKC
 skc_s_need = skc_s_liquidity[skc_s_liquidity.day <= 7]
+#品类应季季节
+cate_1_m = [14,21,196,105,20,20,15,125,159,126,211,46,47,198,155,156]
+start_month = [9,3,3,3,8,2,8,8,12,8,11,9,10,8,8,8]
+end_month = [4,10,11,10,1,3,5,4,2,5,3,4,2,4,4,4]
+cate_month = {"cate_1" : cate_1_m,"start_month" : start_month,"end_month" : end_month}
+cate_month = pd.DataFrame(cate_month,columns=['cate_1','start_month','end_month'])
+date_tep = "%d-%d-%d"
+for i  in range(cate_month.shape[0]):
+    if (cate_month.iloc[i,1] < int(datetime.datetime.now().month)) & (cate_month.iloc[i,2] < int(datetime.datetime.now().month)):
+        cate_month.iloc[i,1] = date_tep % (int(datetime.datetime.now().year)+1,cate_month.iloc[i,1], 1)
+        cate_month.iloc[i,2] = date_tep % (int(datetime.datetime.now().year)+1,cate_month.iloc[i,2], 1)       
+    elif cate_month.iloc[i,1] > cate_month.iloc[i,2]:
+        cate_month.iloc[i,1] = date_tep % (int(datetime.datetime.now().year),cate_month.iloc[i,1], 1)
+        cate_month.iloc[i,2] = date_tep % (int(datetime.datetime.now().year)+1,cate_month.iloc[i,2], 1)
+    elif cate_month.iloc[i,1] < cate_month.iloc[i,2]:
+        cate_month.iloc[i,1] = date_tep % (int(datetime.datetime.now().year),cate_month.iloc[i,1], 1)
+        cate_month.iloc[i,2] = date_tep % (int(datetime.datetime.now().year),cate_month.iloc[i,2], 1)
+cate_month['start_month'] = pd.to_datetime(cate_month['start_month'],format="%Y-%m-%d")
+cate_month['end_month'] = pd.to_datetime(cate_month['end_month'],format="%Y-%m-%d")
+cate_month['diff'] = int(0)
+for i  in range(cate_month.shape[0]):
+    if cate_month.iloc[i,1].date() <= datetime.datetime.now().date():
+        if (cate_month['end_month'][i].date()- datetime.datetime.now().date()).days < 30:
+            cate_month.iloc[i,3] = (cate_month['end_month'][i].date()- datetime.datetime.now().date()).days
+        else:
+            cate_month.iloc[i,3] = int(30)
+    else:
+        cate_month.iloc[i,3] = int(0)
+#判断是否应季以及需补数量
 skc_S_need = list(skc_s_need.skc)
 for skc in list(skc_s_need.skc[skc_s_need.skc.isin(list(skc_stop.SKCID))]):
     skc_S_need.remove(skc)
-skc_s_need[skc_s_need.skc.isin(list(skc_S_need))]
-skc_s_need['need'] = round(skc_s_need['liquidity'] * box_cnt.iloc[0,0] * 60)
-skc_s_need = skc_s_need[skc_s_need.need >= 10]
+skc_s_need = skc_s_need[skc_s_need.skc.isin(list(skc_S_need))].copy()
+skc_s_need['need'] = int(0)
+for i in range(skc_s_need.shape[0]):
+    if cate_month[cate_month.cate_1 == skc_s_need.iloc[i,0]].empty:
+        skc_s_need.iloc[i,7] = round(skc_s_need.iloc[i,3] * box_cnt.iloc[0,0] * 30)
+    else:
+        cate_cnt = cate_month[cate_month.cate_1 == skc_s_need.iloc[i,0]].copy()
+        skc_s_need.iloc[i,7] = round(skc_s_need.iloc[i,3] * box_cnt.iloc[0,0] * int(cate_cnt.iloc[0,-1]))
+
+#提取需补10件以上SKC
+skc_s_need = skc_s_need[skc_s_need.need >= 10].copy()
 skc_s_pic = list(set(skc_s_need['skc']))
 skc_s_item = select_result(skc_run_sql['sql_skc_item'],skc_S_need,1)
 skc_S_1 = pd.merge(skc_s_item,skc_s_need[['skc','need']], how='inner',on = ['skc'])
@@ -396,3 +409,4 @@ for Brand in list(set(skc_S_1.品牌)):
     res_api = orderimportsku(orderid = orderid, key = '@y7M&M@7vk!SUtqb',skulist =skulist)
     skc_order_record.loc[skc_order_record.shape[0]+1] = {"Brand" : Brand,"Orderid" : orderid,"success" : res_api}
 skc_order_record.to_excel('./Daily_record/自动下单监控_' + time.strftime("%Y-%m-%d") + '.xlsx',index = False)
+send_email('./Daily_record/','me')
