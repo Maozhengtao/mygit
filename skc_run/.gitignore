@@ -13,3 +13,4 @@ build
 db.ini
 deploy_key_rsa
 skc_run_utils.py
+/Daily_record/*
