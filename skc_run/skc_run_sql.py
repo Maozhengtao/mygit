@@ -431,7 +431,7 @@ INNER JOIN orderproduct AS odp ON odp.OrderID = od.ID
 LEFT JOIN productinventory AS pi ON pi.SKCID = odp.SKCID
 AND pi.CreatedDate > odp.CreatedDate
 WHERE
-	od.automatic = 1
+	od.Type = 1
 AND od.Deleted = 0
 AND odp.Deleted = 1
 AND pi.SKCID IS NULL
@@ -610,8 +610,46 @@ and bd.UPC <> 0
 AND bd.CreatedDate >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
 GROUP BY
 	ps.Size
+''',
+'sql_s_skc_record' : '''
+SELECT
+	count(DISTINCT r.skc) AS skc_cnt,
+	sum(r.S_skc) AS s_stock_cnt,
+	sum(IF(r.S_skc = 1, r.stock, 0)) / sum(r.S_skc) AS s_avg_stock,
+	date(
+		DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+	) AS date
+FROM
+	(
+		SELECT
+			p.SKCID AS skc,
+			count(DISTINCT pu.upc) AS stock,
+
+		IF (p.SKCID IN(% s), 1, 0) AS 'S_skc'
+		FROM
+			productupc AS pu
+		INNER JOIN product AS p ON p.ID = pu.ProdID
+		INNER JOIN (
+			SELECT
+				P.SKCID
+			FROM
+				boxdetail AS bd
+			INNER JOIN product AS p ON p.ID = bd.ProdID
+			WHERE
+				bd.Deleted = 0
+			AND bd.`Status` IN (2, 3)
+			AND bd.UPC <> 0
+			GROUP BY
+				p.SKCID
+		) AS r ON r.SKCID = p.SKCID
+		WHERE
+			pu.`Status` = 1
+		AND pu.Deleted = 0
+		GROUP BY
+			p.SKCID
+	) AS r
 '''
 }
-f = open('E:/python/skc_run/skc_run_sql.txt', 'w')
+f = open('./data/skc_run_sql.txt', 'w')
 f.write(str(skc_run_sql))
 f.close()

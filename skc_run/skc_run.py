@@ -1,12 +1,12 @@
 #!/usr/bin/python
 #-*-coding : UTF-8 -*-
-import base64
-import hashlib
-import pytz
-import operator
-import json
-import requests
-import pymysql
+#import base64
+#import hashlib
+#import pytz
+#import operator
+#import json
+#import requests
+#import pymysql
 import pandas as pd
 import numpy as np
 import datetime
@@ -15,62 +15,47 @@ from pandasql import sqldf
 from scipy import stats as sts
 from scipy.stats import chi2_contingency
 from scipy.stats import ttest_ind
-import xlwt
+#import xlwt
 import sys
-import smtplib
+#import smtplib
 import os.path
 #读取execel使用(支持07)  
-from openpyxl import Workbook  
+#from openpyxl import Workbook  
 #写入excel使用(支持07)  
-from openpyxl import load_workbook 
-from openpyxl.workbook import Workbook
-from openpyxl.writer.excel import ExcelWriter 
-from openpyxl.chart import BarChart, Series, Reference, BarChart3D   
-from openpyxl.styles import Font, colors, Alignment,PatternFill,Border,Side,numbers
-import xlsxwriter as xlw
-from io import BytesIO 
-from urllib.request import urlopen
-import pickle as p 
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
-from email import encoders
-from sqlalchemy import create_engine
+#from openpyxl import load_workbook 
+#from openpyxl.workbook import Workbook
+#from openpyxl.writer.excel import ExcelWriter 
+#from openpyxl.chart import BarChart, Series, Reference, BarChart3D   
+#from openpyxl.styles import Font, colors, Alignment,PatternFill,Border,Side,numbers
+#import xlsxwriter as xlw
+#from io import BytesIO 
+#from urllib.request import urlopen
+#import pickle as p 
+#from email.mime.multipart import MIMEMultipart
+#from email.mime.text import MIMEText
+#from email.mime.application import MIMEApplication
+#from email import encoders
+#from sqlalchemy import create_engine
 from skc_run_utils import select_result
 from skc_run_utils import get_orderid
 from skc_run_utils import orderimportsku
-pymysql.install_as_MySQLdb()
+from skc_run_utils import save_to_database
+#from sqlalchemy import create_engine
+#pymysql.install_as_MySQLdb()
 
-
-
-#-------临时使用--------------------------
-def select_result_2(chart_sql,parameter= ()):
-    sql = chart_sql
-    db = pymysql.connect("localhost","root","maomao123","test",charset='utf8mb4',port = 3306)####使用cursor()获取操作游标
-    cur = db.cursor()
-    if len(parameter) == 0  :
-        count = cur.execute(sql)
-        res = pd.read_sql(sql, con=db)
-        db.close()
-    else : 
-        sql = chart_sql % parameter
-        res = pd.read_sql(sql,con=db)
-        db.close()
-    return res
-#---------------------------------
 
 #Data
 ##读取算法所需的SQL
-f = open('E:/python/skc_run/skc_run_sql.txt','r')
+f = open('./data/skc_run_sql.txt','r')
 a = f.read()
 skc_run_sql = eval(a)
 ##价位转化依赖表
-c2pr = pd.read_csv(r'c:/Users/Alienware/Desktop/buyer/skc_run/pricenode.csv',sep = ',')
+c2pr = pd.read_csv('./data/pricenode.csv',sep = ',')
 ##查询所需数据
-skc = select_result(skc_run_sql['sql_skc'],0)
-boxdetail = select_result(skc_run_sql['boxdetail_sql'],0)
-skcchange = select_result(skc_run_sql['skcchange_sql'],0)
-skc_stop = select_result_2(skc_run_sql['sql_skc_stop'])
+skc = select_result(skc_run_sql['sql_skc'])
+boxdetail = select_result(skc_run_sql['boxdetail_sql'])
+skcchange = select_result(skc_run_sql['skcchange_sql'])
+skc_stop = select_result(skc_run_sql['sql_skc_stop'],type = 3)
 skcchange['datetime'] = pd.to_datetime(skcchange['datetime'],format="%Y-%m-%d %H:%M:%S")
 boxdetail['datetime'] = pd.to_datetime(boxdetail['datetime'],format="%Y-%m-%d %H:%M:%S")
 
@@ -171,24 +156,13 @@ skc_S = skc_normal[skc_normal.R.str.contains("S")].append(skc_new[skc_new.R.str.
 
 ##保存每日的S级在库情况
 skc_s_record = list(skc_S.skc)
-sql_s_skc = '''
-select count(DISTINCT r.skc) as skc_cnt,sum(r.S_skc) as s_stock_cnt,sum(if(r.S_skc = 1,r.stock,0))/sum(r.S_skc) as s_avg_stock,date(DATE_SUB(CURDATE(),INTERVAL 1 day)) as date from 
-(select p.SKCID as skc , count(DISTINCT pu.upc) as stock,if(p.SKCID in (%s),1,0) as 'S_skc' from productupc as pu 
-inner join product as p on p.ID = pu.ProdID
-INNER JOIN (select P.SKCID from boxdetail as bd 
-inner join product as p on p.ID = bd.ProdID
-where bd.Deleted = 0 and bd.`Status` in (2,3) and bd.UPC <> 0 
-GROUP BY p.SKCID) AS r on r.SKCID = p.SKCID
-where pu.`Status` = 1 
-and pu.Deleted = 0 
-GROUP BY p.SKCID) as r 
-'''% ','.join(["'%s'" % item for item in skc_s_record])
-skcrecord = select_result(sql_s_skc,0)
-yconnect = create_engine('mysql://analysis:sI5A2BU4p7NobtbG@rm-bp12n2u9o7432w52b.mysql.rds.aliyuncs.com:3306/analysis')
-pd.io.sql.to_sql(skcrecord,'skcrecord', yconnect, schema='analysis', if_exists='append',index = False)
+skcrecord = select_result(skc_run_sql['sql_s_skc_record'],skc_s_record,1)
+save_to_database(skcrecord,'analysis',"skcrecord")
+#yconnect = create_engine('mysql://analysis:sI5A2BU4p7NobtbG@rm-bp12n2u9o7432w52b.mysql.rds.aliyuncs.com:3306/analysis')
+#pd.io.sql.to_sql(skcrecord,'skcrecord', yconnect, schema='analysis', if_exists='append',index = False)
 
 #计算S级SKC与新品的流通速度
-newskc = select_result(skc_run_sql['sql_newskc'],0)
+newskc = select_result(skc_run_sql['sql_newskc'])
 new_skc = list(newskc.skc)
 skc_sid = list(skc_S.skc)
 boxdetail_skc = list(set(boxdetail.skc))
@@ -285,7 +259,7 @@ sql_s_skc = "select * from skc_liquidity_1 as a where a.skc in (%s) "% ','.join(
 skc_s_liquidity = sqldf(sql_s_skc)
 skc_S_circulate = list(set(skc_s_liquidity.skc))
 skc_s_stock = select_result(skc_run_sql['sql_stock'],skc_S_circulate,1)
-box_cnt = select_result(skc_run_sql['sql_boxcnt'],0)
+box_cnt = select_result(skc_run_sql['sql_boxcnt'])
 skc_s_liquidity['stock'] = int(0)
 skc_s_liquidity['boxcnt'] = int(0)
 skc_s_liquidity['day'] = int(0)
@@ -308,12 +282,12 @@ for i  in range(len(skc_S_1)):
     skc_S_1.iloc[i,7] = '%.2f%%' %(skc_S_1.iloc[i,7] * 100)
 skc_S_1_id = list(set(skc_S_1.skc))
 #构建SKC自动下单所需信息
-RecommendSizeBottom_1 = select_result(skc_run_sql['RecommendSizeBottom_1'],0)
-RecommendSizeTop_1 = select_result(skc_run_sql['RecommendSizeTop_1'],0)
-RecommendSizeShoes_1 = select_result(skc_run_sql['RecommendSizeShoes_1'],0)
-RecommendSizeSuit_1 = select_result(skc_run_sql['RecommendSizeSuit_1'],0)
+RecommendSizeBottom_1 = select_result(skc_run_sql['RecommendSizeBottom_1'])
+RecommendSizeTop_1 = select_result(skc_run_sql['RecommendSizeTop_1'])
+RecommendSizeShoes_1 = select_result(skc_run_sql['RecommendSizeShoes_1'])
+RecommendSizeSuit_1 = select_result(skc_run_sql['RecommendSizeSuit_1'])
 skc_s_need_size = select_result(skc_run_sql['sql_sid_size'],skc_S_1_id,1)
-skc_order_cnt = select_result(skc_run_sql['sql_order_cnt'],0)
+skc_order_cnt = select_result(skc_run_sql['sql_order_cnt'])
 x_cate = np.array([1,2,3,5])
 np.repeat(x_cate, [4,6,9,5], axis=0)
 size_dict  = {"cate" : np.repeat(x_cate, [4,6,9,5], axis=0),
@@ -375,7 +349,6 @@ for i in range(len(newusersize_1)):
 skc_S_1_copy = skc_S_1.copy()
 skc_order_record = pd.DataFrame(columns = ("Brand","Orderid","success"))
 #-------------生成订单----------------
-#skc_S_order = pd.DataFrame(columns=  select_result(skc_run_sql['sql_aim_skc'],[4],1).columns.values.tolist())  
 for Brand in list(set(skc_S_1.品牌)):
     skc_S_order = pd.DataFrame(columns=  select_result(skc_run_sql['sql_aim_skc'],[4],1).columns.values.tolist())  
     for skc in list(set(skc_S_1.skc[skc_S_1.品牌 == Brand])):
@@ -418,12 +391,8 @@ for Brand in list(set(skc_S_1.品牌)):
     skc_S_order = skc_S_order[skc_S_order.PurchaseNum > 0].copy()
     skc_S_order = skc_S_order.reset_index(drop = True)
     skulist = skc_S_order.to_dict('records')
-    try:
-    	orderid_api_res = get_orderid(key = '@y7M&M@7vk!SUtqb', supplierid = int(10) ,handleby = int(list(set(skc_S_1.负责人[skc_S_1.品牌 == Brand]))[0]))
-    	orderid = orderid_api_res["data"]["orderID"]
-    	res_api = orderimportsku(orderid = orderid, key = '@y7M&M@7vk!SUtqb',skulist =skulist)
-    	skc_order_record.loc[skc_order_record.shape[0]+1] = {"Brand" : Brand,"Orderid" : orderid,"success" : res_api}
-    except:
-    	skc_order_record.loc[skc_order_record.shape[0]+1] = {"Brand" : Brand,"Orderid" : "failed","success" : "failed"}	
-
-skc_order_record.to_excel("E:/rr.xlsx")
+    orderid_api_res = get_orderid(key = '@y7M&M@7vk!SUtqb', supplierid = int(10) ,handleby = int(list(set(skc_S_1.负责人[skc_S_1.品牌 == Brand]))[0]))
+    orderid = orderid_api_res["data"]["orderID"]
+    res_api = orderimportsku(orderid = orderid, key = '@y7M&M@7vk!SUtqb',skulist =skulist)
+    skc_order_record.loc[skc_order_record.shape[0]+1] = {"Brand" : Brand,"Orderid" : orderid,"success" : res_api}
+skc_order_record.to_excel('./Daily_record/自动下单监控_' + time.strftime("%Y-%m-%d") + '.xlsx',index = False)
