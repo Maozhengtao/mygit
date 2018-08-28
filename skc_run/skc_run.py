@@ -1,12 +1,5 @@
 #!/usr/bin/python
 #-*-coding : UTF-8 -*-
-#import base64
-#import hashlib
-#import pytz
-#import operator
-#import json
-#import requests
-#import pymysql
 import pandas as pd
 import numpy as np
 import datetime
@@ -18,7 +11,8 @@ from scipy.stats import ttest_ind
 import sys
 import os.path
 from skc_run_utils import *
-
+import json
+import base64
 
 #Data
 ##读取算法所需的SQL
@@ -398,15 +392,16 @@ for Brand in list(set(skc_S_1.品牌)):
                 if skc_order_cnt.order_cnt[skc_order_cnt.SKUID == skc_size_trans.iloc[j-1,0]].empty:
                     skc_aim.iloc[j,7] = int(np.round(float(int(total_cnt) * float(skc_size_trans.iloc[j-1,7]))))
                 else:
-                    skc_aim.iloc[j,7] = int(np.round(float(int(total_cnt) * float(skc_size_trans.iloc[j-1,7]))) - int(skc_order_cnt.order_cnt[skc_order_cnt.SKUID == skc_size_trans.iloc[j-1,0]]),0)
+                    skc_aim.iloc[j,7] = int(np.round(float(int(total_cnt) * float(skc_size_trans.iloc[j-1,7])) - int(skc_order_cnt.order_cnt[skc_order_cnt.SKUID == skc_size_trans.iloc[j-1,0]]),0))
             skc_S_order = skc_S_order.append(skc_aim)
     del skc_S_order['Cate1']
     skc_S_order = skc_S_order[skc_S_order.PurchaseNum > 0].copy()
     skc_S_order = skc_S_order.reset_index(drop = True)
-    skulist = skc_S_order.to_dict('records')
+    skulist = json.dumps(skc_S_order.to_dict('records'),sort_keys=True).replace(" ","")
+    skulist = base64.b64encode(skulist.encode('utf-8'))
     orderid_api_res = get_orderid(key = '@y7M&M@7vk!SUtqb', supplierid = int(10) ,handleby = int(list(set(skc_S_1.负责人[skc_S_1.品牌 == Brand]))[0]))
     orderid = orderid_api_res["data"]["orderID"]
     res_api = orderimportsku(orderid = orderid, key = '@y7M&M@7vk!SUtqb',skulist =skulist)
-    skc_order_record.loc[skc_order_record.shape[0]+1] = {"Brand" : Brand,"Orderid" : orderid,"success" : res_api}
+    skc_order_record.loc[skc_order_record.shape[0]+1] = {"Brand" : Brand,"Orderid" : orderid,"success" : res_api["msg"]}
 skc_order_record.to_excel('./Daily_record/自动下单监控_' + time.strftime("%Y-%m-%d") + '.xlsx',index = False)
 send_email('./Daily_record/','me')
